@@ -36,19 +36,24 @@ export async function adminFetch<T = unknown>(
     throw new ApiError('未登录', 401);
   }
 
+  const method = options.method ?? 'GET';
   const headers: Record<string, string> = {
     'x-session': session.access_token,
   };
+  // GET/HEAD 请求禁止携带 body（浏览器会直接抛 Request with GET/HEAD method cannot have body）
+  const methodHasBody = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
   let body: BodyInit | undefined;
-  if (options.formData) {
-    body = options.formData;
-  } else if (options.body !== undefined) {
-    headers['Content-Type'] = 'application/json';
-    body = JSON.stringify(options.body);
+  if (methodHasBody) {
+    if (options.formData) {
+      body = options.formData;
+    } else if (options.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(options.body);
+    }
   }
 
   const res = await fetch(path, {
-    method: options.method ?? 'GET',
+    method,
     headers,
     body,
     cache: options.cache ?? 'no-store',
@@ -94,14 +99,15 @@ export const apiClient = {
   del<T = unknown>(path: string): Promise<T> {
     return adminFetch<T>(`/api${path}`, { method: 'DELETE' });
   },
-  /** 上传图片，返回对象存储 key（业务表持久化 key，展示时经 resolveMediaUrl 签名） */
+  /** 上传图片，返回可直接访问的公开 URL（业务表持久化该 URL，小程序直连即可展示） */
   async uploadMedia(file: File, folder: string): Promise<string> {
     const form = new FormData();
     form.append('file', file);
     form.append('dir', folder);
     const res = await adminFetch<{ key: string; url: string }>('/api/admin/upload', {
+      method: 'POST',
       formData: form,
     });
-    return res.key;
+    return res.url;
   },
 };

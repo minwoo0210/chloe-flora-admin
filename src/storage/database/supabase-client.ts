@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { execSync } from 'child_process';
+import { createRequire } from 'module';
 import { getReportBuffer, createWrappedFetch } from 'coze-coding-dev-sdk';
 
 let envLoaded = false;
@@ -16,7 +17,10 @@ function loadEnv(): void {
 
   try {
     try {
-      require('dotenv').config();
+      // 本地开发时尝试加载 .env（运行时已注入环境变量则跳过）
+      const nodeRequire = createRequire(import.meta.url);
+      const dotenv = nodeRequire('dotenv') as { config: () => unknown };
+      dotenv.config();
       if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
         envLoaded = true;
         return;
@@ -100,7 +104,10 @@ function getSupabaseClient(token?: string): SupabaseClient {
     key = serviceRoleKey ?? anonKey;
   }
 
-  const globalOptions: Record<string, any> = {};
+  const globalOptions: {
+    headers?: Record<string, string>;
+    fetch?: typeof fetch;
+  } = {};
   if (token) {
     globalOptions.headers = { Authorization: `Bearer ${token}` };
   }

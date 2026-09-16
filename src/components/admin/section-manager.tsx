@@ -234,7 +234,7 @@ export function SectionManager({ sections, categories, onChange }: SectionManage
 
       {creating && (
         <div className="rounded-md border border-dashed border-brand/50 bg-brand/[0.03] p-3">
-          {renderForm(form.image_key.startsWith('http') ? form.image_key : '')}
+          {renderForm(form.image_key)}
           <div className="mt-3 flex justify-end gap-2">
             <Button size="sm" variant="outline" onClick={() => setCreating(false)}>
               <X className="h-4 w-4" /> 取消

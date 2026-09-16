@@ -145,7 +145,7 @@ export function ProductDialog({
           <div className="space-y-2">
             <Label className="text-xs tracking-widest">商品主图</Label>
             <ImageUploader
-              value={form.main_image.startsWith('http') ? form.main_image : ''}
+              value={form.main_image}
               onChange={(url) => set('main_image', url)}
               ratioHint="1:1 或 4:3"
               folder="products"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { extFromContentType, sanitizeFileName, uploadImage } from '@/lib/storage';
+import { extFromContentType, resolveMediaUrl, sanitizeFileName, uploadImage } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,5 +44,7 @@ export async function POST(req: NextRequest) {
   const suggestedKey = `${dir}/${baseName}_${Date.now()}.${ext}`;
 
   const key = await uploadImage(Buffer.from(arrayBuffer), suggestedKey, file.type);
-  return NextResponse.json({ key, url: `/api/media?key=${encodeURIComponent(key)}` });
+  // 返回可直接访问的公开 URL，业务表持久化该 URL，小程序直连数据库即可展示
+  const publicUrl = await resolveMediaUrl(key);
+  return NextResponse.json({ key, url: publicUrl ?? `/api/media?key=${encodeURIComponent(key)}` });
 }

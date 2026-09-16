@@ -197,7 +197,7 @@ export function BannerManager({ banners, onChange }: BannerManagerProps) {
         {creating && (
           <div className="space-y-3 rounded-md border border-dashed border-brand/50 bg-brand/[0.03] p-3">
             <ImageUploader
-              value={form.image_key.startsWith('http') ? form.image_key : ''}
+              value={form.image_key}
               onChange={(url) => setForm((f) => ({ ...f, image_key: url }))}
               ratioHint="16:9"
               folder="banners"
