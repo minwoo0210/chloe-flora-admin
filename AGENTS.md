@@ -63,3 +63,69 @@
 
 - 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
 - Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
+
+---
+
+# Chloe Flora 花艺工作室 · Web 管理后台
+
+供店主在浏览器中管理小程序前端全部内容（商品 / 首页 / 风格 / 订单 / 客户）。表结构与小程序端共享同一 Supabase 数据库。
+
+## 业务模块与路由
+
+| 页面 | 路由 | 说明 |
+| --- | --- | --- |
+| 登录 | `/login` | 邮箱+密码（Supabase Auth，邮箱自动确认） |
+| 仪表盘 | `/dashboard` | 今日/待处理营收、订单数、客户数、最近订单 |
+| 商品管理 | `/products` | 商品 CRUD、分类筛选/搜索、上下架、库存、主图；分类管理弹窗 |
+| 首页内容 | `/homepage` | 品牌文案 Slogan、Banner、品类宣传区、热门推荐位（均支持排序/启用） |
+| 风格配置 | `/theme` | 主题色/底色/三级文字色，色板+十六进制输入+手机实时预览 |
+| 订单管理 | `/orders` | 订单列表/筛选/状态流转/详情（含客户、商品明细、配送费） |
+| 客户管理 | `/customers` | 客户档案、下单数、累计消费、最近下单 |
+
+受保护页面统一在 `src/app/(admin)/` 路由组，布局 `src/app/(admin)/layout.tsx` 做前端登录态守卫；所有 `/api/admin/*` 接口在服务端校验 `x-session`。
+
+## 数据访问分层
+
+- 表结构（唯一事实来源）：`src/storage/database/shared/schema.ts`（drizzle 定义）。改表后执行
+  `COZE_API_TOKEN=$COZE_WORKLOAD_API_TOKEN npx coze-coding-ai db upgrade` 同步；新增列务必确认线上已生效（历史上出现过 upgrade 未补列的情况）。
+- Drizzle 客户端：`src/storage/database/supabase-client.ts`，导出 `supabaseAdmin`（service role，绕过 RLS，仅服务端）与 `loadEnv()`（注入运行时环境变量）。
+- 业务服务：`src/server/services/*.ts`（category / product / homepage / settings / order / stats），API Route 只做鉴权、参数校验、HTTP 响应，不直接拼 SQL。
+- API 客户端：`src/lib/api-client.ts` 导出单例 `apiClient`（GET/POST/PUT/PATCH/DELETE，自动带 `x-session`、统一解包与 401 跳登录）。
+- 共享类型：`src/lib/types.ts`；常量/状态机：`src/lib/constants.ts`；金额/日期：`src/lib/format.ts`。
+
+## 鉴权约定
+
+- 前端登录成功后把 supabase session 的 `access_token` 存 localStorage，请求统一放入 **`x-session`** header（不是 Authorization）。
+- 服务端用 `src/lib/auth.ts` 的 `requireAdmin(request)` 校验并返回用户邮箱；`/api/supabase-config` 向前端下发 anonKey 与 URL（仅在有 session 时才缓存 token）。
+- 当前为店主单角色（登录即全权）。新增管理员用 `pnpm tsx scripts/create-admin.ts <邮箱> <密码>`。
+
+## 对象存储
+
+- 图片使用 **Supabase Storage 的公开 bucket `media`**（`src/lib/storage.ts`）。原因：本项目沙箱未开通 coze S3 代理写权限（S3Storage 返回 AccessDenied），Supabase Storage 已验证可用。
+- 数据库只持久化桶内相对 key（如 `products/xxx.jpg`）或历史外链（http(s) 原样返回）；列表经服务层转成公开 URL。
+- 上传：`POST /api/admin/upload`（multipart，字段 `file` + `dir`）→ 返回 `{key,url}`；读取代理：`GET /api/media?key=`（302 到公开 URL）。
+- 删除图片：`deleteMedia()`；删除商品/分类等默认不级联删图。
+
+## 数据库 RLS 策略（与小程序端共享）
+
+- `products / categories / banners / category_sections / hot_recommendations`：anon 只读「已上架/启用」行；管理后台全部经 service role 绕过 RLS。
+- `site_settings`：anon 只读（风格配置需小程序实时同步）。
+- `orders / order_items / customers`：anon 仅可 INSERT（小程序下单），不可读改；后台经 service role 全量管理。
+
+## 种子数据
+
+- 已内置 6 个分类、11 个商品、3 张 Banner、3 个品类宣传区、4 个热门位、品牌文案/主题、3 位客户与 5 笔订单。
+- 订单种子：`pnpm tsx scripts/seed-orders.ts`（幂等，依赖商品与客户已存在）。
+- 商品/首页种子目前通过 SQL 维护（见交付说明）。
+
+## 关键业务规则
+
+- 订单状态机 `pending_payment → paid → making → delivering → completed`，任一非取消状态可转 `cancelled`；逆向/跳跃流转返回 **409**。置为 completed 时写 `completed_at`。
+- 商品金额、库存为 numeric/int；前端金额用 `formatCurrency`（服务端返回的 decimal 已 number 化）。
+- 热门推荐位一个商品只能出现一次（部分唯一索引）；重复添加返回 409，删除为软删（`deleted_at`），重新添加会复活原记录。
+
+## 验证命令
+
+- 静态检查：`pnpm lint`、`pnpm ts-check`（交付前必须通过）。
+- 接口冒烟：所有 `/api/admin/*` 需带有效 `x-session`；未登录应 401，资源不存在应 404，状态冲突应 409。
+- 禁止手写测试文件；冒烟验证通过 `test_run` 的 curl 完成。
